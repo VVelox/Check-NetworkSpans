@@ -1,0 +1,37 @@
+#!/bin/sh
+
+if [ -z "$CHECK_NETWORKSPANS_DURATION" ]; then
+	export CHECK_NETWORKSPANS_DURATION=120
+fi
+
+if [ -z "$CHECK_NETWORKSPANS_PACKETS" ]; then
+	export CHECK_NETWORKSPANS_PACKETS=2000
+fi
+
+if [ -z "$CHECK_NETWORKSPANS_DIR" ]; then
+	echo "env CHECK_NETWORKSPANS_DIR is not set"
+	exit 1;
+else
+	if [ ! -d "$CHECK_NETWORKSPANS_DIR" ]; then
+		echo "$CHECK_NETWORKSPANS_DIR does not exist or is not a directory"
+	fi
+fi
+cd "$CHECK_NETWORKSPANS_DIR"
+
+for interface in `echo "$CHECK_NETWORKSPANS_INTERFACES"`; do
+	tshark -i "$interface" -a "duration:$CHECK_NETWORKSPANS_DURATION" -a "packets:$CHECK_NETWORKSPANS_PACKETS" -w "$interface".pcap -f "$CHECK_NETWORKSPANS_FILTER" &
+done
+
+check_time=0
+contintue_check=1
+while [ "$contintue_check" -ge 1 ]; do
+	check_time=`export "$check_time" + 5`
+	sleep 5;
+	if [ `jobs -p | wc -l` -lt 1 ]; then
+		contintue_check=0
+	fi
+done
+
+if [ "$contintue_check" -ge 1 ]; then
+	jobs -p | xargs kill
+fi

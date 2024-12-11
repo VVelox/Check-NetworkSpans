@@ -1,0 +1,123 @@
+#!perl
+
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use Getopt::Long;
+use Pod::Usage;
+use Check::NetworkSpans;
+
+=head1 NAME
+
+check_networkspans - Check interfaces to see if we are getting span traffic.
+
+=head1 SYNOPSIS
+
+check_networkspans B<-s> <span ports> [B<-s> <span ports>] [B<-i> <ignore IP>] [B<-a> <0/1>]
+[B<-d> <seconds>] [B<-p> <packets>]
+
+check_networkspans -h/--help
+
+check_networkspans -v/--version
+
+=head1 DESCRIPTION
+
+A nagios style check to see if a the specified spans are seeing traffic or not.
+
+=head1 FLAGS
+
+=head2 -a <0/1>
+
+If the first IP on each interface, for all interfaces on the machine not
+just spans, should be ignored.
+
+Default :: 1
+
+=head2 -d <seconds>
+
+Max time the test should run for in seconds.
+
+Default :: 120
+
+=head2 -i <ignore IP>
+
+A IPv4 or IPv6 address to ignore.
+
+May be used more than once.
+
+=head2 -p <packets>
+
+Number of packets to capture for the test.
+
+Default :: 2000
+
+=head2 -s <span ports>
+
+A comma seperated list of ports to look for traffic on.
+
+May be used more than once
+
+=cut
+
+sub version {
+        print 'check_networkspans v. ' . $Check::NetworkSpans::VERSION . "\n";
+}
+
+sub help {
+        pod2usage( -exitval => 255, -verbose => 2, -output => \*STDOUT );
+}
+
+my $help;
+my $version;
+my $auto_ignore;
+my $duration;
+my @ignore_IPs;
+my $packets;
+my @opt_spans;
+GetOptions(
+	'version' => \$version,
+	'v'       => \$version,
+	'help'    => \$help,
+	'h'       => \$help,
+	'a=s'     => \$auto_ignore,
+	'd=s'     => \$duration,
+	'i=s'     => \@ignore_IPs,
+	'p=s'     => \$packets,
+	's=s'     => \@opt_spans,
+);
+
+if ($help) {
+        &help;
+        exit 255;
+}
+if ($version) {
+        &version;
+        exit 255;
+}
+
+# put together the span
+my @spans;
+foreach my $span (@opt_spans) {
+	my @span_split=split(/,/, $span);
+
+	my @span_set;
+	foreach my $interface (@span_split) {
+		$interface=~s/^[\ \t]*//;
+		$interface=~s/[\ \t]*$//;
+		push(@span_set, $interface);
+	}
+
+	push(@spans, \@span_set);
+}
+
+my $span_checker=Check::NetworkSpans->new(
+										  spans=>\@spans,
+										  ignore_IPs=>\@ignore_IPs,
+										  auto_ignore=>$auto_ignore,
+										  packets=>$packets,
+										  duration=>$duration,
+										  );
+
+my $results=$span_checker->check;
+
