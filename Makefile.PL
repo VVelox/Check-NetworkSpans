@@ -11,7 +11,7 @@ my %WriteMakefileArgs = (
 	LICENSE            => 'gpl_2',
 	MIN_PERL_VERSION   => '5.006',
 	INST_SCRIPT        => 'bin',
-	EXE_FILES          => [ 'src_bin/check_networkspans' ],
+	EXE_FILES          => ['src_bin/check_networkspans'],
 	CONFIGURE_REQUIRES => {
 		'ExtUtils::MakeMaker' => '0',
 	},
@@ -19,7 +19,11 @@ my %WriteMakefileArgs = (
 		'Test::More' => '0',
 	},
 	PREREQ_PM => {
-		'JSON' => 0,
+		'JSON'                  => 0,
+		'Rex::Commands::Gather' => 0,
+		'Regexp::IPv4'          => 0,
+		'Regexp::IPv6'          => 0,
+		'String::ShellQuote'    => 0,
 	},
 	dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
 	clean => { FILES    => 'Check-NetworkSpans-*' },
