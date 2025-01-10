@@ -4,7 +4,7 @@
 
 use warnings;
 use strict;
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use Check::NetworkSpans;
 
@@ -15,7 +15,7 @@ check_networkspans - Check interfaces to see if we are getting span traffic.
 =head1 SYNOPSIS
 
 check_networkspans B<-s> <span ports> [B<-s> <span ports>] [B<-i> <ignore IP>] [B<-a> <0/1>]
-[B<-d> <seconds>] [B<-p> <packets>]
+[B<-d> <seconds>] [B<-p> <packets>] [B<-P> <port>] [B<-A> <port>]
 
 check_networkspans -h/--help
 
@@ -33,6 +33,11 @@ If the first IP on each interface, for all interfaces on the machine not
 just spans, should be ignored.
 
 Default :: 1
+
+=head2 -A <port>
+
+Additional ports to look for. Will be appended to -P if used or other wise will be appended
+to the defaults.
 
 =head2 -d <seconds>
 
@@ -52,6 +57,12 @@ Number of packets to capture for the test.
 
 Default :: 2000
 
+=head2 -P <port>
+
+A port to check for. To specify more than one poart use -P mulitple times.
+
+Default :: 22, 53, 80, 88, 135, 389, 443, 445, 3389, 3306, 5432
+
 =head2 -s <span ports>
 
 A comma seperated list of ports to look for traffic on.
@@ -61,63 +72,76 @@ May be used more than once
 =cut
 
 sub version {
-        print 'check_networkspans v. ' . $Check::NetworkSpans::VERSION . "\n";
+	print 'check_networkspans v. ' . $Check::NetworkSpans::VERSION . "\n";
 }
 
 sub help {
-        pod2usage( -exitval => 255, -verbose => 2, -output => \*STDOUT );
+	pod2usage( -exitval => 255, -verbose => 2, -output => \*STDOUT );
 }
 
 my $help;
 my $version;
-my $auto_ignore;
+my $auto_ignore = 1;
 my $duration;
 my @ignore_IPs;
 my $packets;
 my @opt_spans;
+my @ports;
+my @additional_ports;
 GetOptions(
 	'version' => \$version,
 	'v'       => \$version,
 	'help'    => \$help,
 	'h'       => \$help,
 	'a=s'     => \$auto_ignore,
+	'A=s'     => \@additional_ports,
 	'd=s'     => \$duration,
 	'i=s'     => \@ignore_IPs,
 	'p=s'     => \$packets,
-	's=s'     => \@opt_spans,
+	'P=s'     => \@ports,
+
+	's=s' => \@opt_spans,
 );
 
 if ($help) {
-        &help;
-        exit 255;
+	&help;
+	exit 255;
 }
 if ($version) {
-        &version;
-        exit 255;
+	&version;
+	exit 255;
+}
+
+if ( !defined( $opt_spans[0] ) ) {
+	die('No spans specified via -s');
 }
 
 # put together the span
 my @spans;
 foreach my $span (@opt_spans) {
-	my @span_split=split(/,/, $span);
+	my @span_split = split( /,/, $span );
 
 	my @span_set;
 	foreach my $interface (@span_split) {
-		$interface=~s/^[\ \t]*//;
-		$interface=~s/[\ \t]*$//;
-		push(@span_set, $interface);
+		$interface =~ s/^[\ \t]*//;
+		$interface =~ s/[\ \t]*$//;
+		push( @span_set, $interface );
 	}
 
-	push(@spans, \@span_set);
-}
+	push( @spans, \@span_set );
+} ## end foreach my $span (@opt_spans)
 
-my $span_checker=Check::NetworkSpans->new(
-										  spans=>\@spans,
-										  ignore_IPs=>\@ignore_IPs,
-										  auto_ignore=>$auto_ignore,
-										  packets=>$packets,
-										  duration=>$duration,
-										  );
+my $span_checker = Check::NetworkSpans->new(
+	spans            => \@spans,
+	ignore_IPs       => \@ignore_IPs,
+	auto_ignore      => $auto_ignore,
+	packets          => $packets,
+	duration         => $duration,
+	ports            => \@ports,
+	additional_ports => \@additional_ports,
+);
 
-my $results=$span_checker->check;
+use Data::Dumper;
+print Dumper $span_checker;
 
+my $results = $span_checker->check;

@@ -5,7 +5,7 @@ if [ -z "$CHECK_NETWORKSPANS_DURATION" ]; then
 fi
 
 if [ -z "$CHECK_NETWORKSPANS_PACKETS" ]; then
-	export CHECK_NETWORKSPANS_PACKETS=2000
+	export CHECK_NETWORKSPANS_PACKETS=10000
 fi
 
 if [ -z "$CHECK_NETWORKSPANS_DIR" ]; then
@@ -19,7 +19,7 @@ fi
 cd "$CHECK_NETWORKSPANS_DIR"
 
 for interface in `echo "$CHECK_NETWORKSPANS_INTERFACES"`; do
-	tshark -i "$interface" -a "duration:$CHECK_NETWORKSPANS_DURATION" -a "packets:$CHECK_NETWORKSPANS_PACKETS" -w "$interface".pcap -f "$CHECK_NETWORKSPANS_FILTER" &
+	tshark -i "$interface" -a "duration:$CHECK_NETWORKSPANS_DURATION" -a "packets:$CHECK_NETWORKSPANS_PACKETS" -w "$interface".pcap -f "$CHECK_NETWORKSPANS_FILTER" -Q 2>&1 &
 done
 
 check_time=0
