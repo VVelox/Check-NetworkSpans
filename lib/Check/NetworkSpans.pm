@@ -327,6 +327,12 @@ sub check {
 			}
 		}
 	}
+
+	my $results={
+				 'stream_packets' => 0,
+				 'spans_with_no_streams' => 0,
+				 'spans_with_streams' => 0,
+				 };
 } ## end sub check
 
 =head1 AUTHOR
