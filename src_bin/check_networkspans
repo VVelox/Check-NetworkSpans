@@ -25,7 +25,7 @@ check_networkspans -v/--version
 
 A nagios style check to see if a the specified spans are seeing traffic or not.
 
-=head1 FLAGS
+=head1 FLAGS, GENERAL
 
 =head2 -a <0/1>
 
@@ -67,7 +67,106 @@ Default :: 22, 53, 80, 88, 135, 389, 443, 445, 3389, 3306, 5432
 
 A comma seperated list of ports to look for traffic on.
 
-May be used more than once
+May be used more than once.
+
+If one of the items in the list starts with %, that will be used as the
+name of the span. It will not be used as a interface.
+
+Starting and leading spaces and tabs for each interface is removed.
+
+=head1 FLAGS, ALERT CONTROL
+
+Levels are as below.
+
+    - 0 :: OK
+    - 1 :: WARNING
+    - 2 :: ALERT
+    - 3 :: UNKNOWN
+
+=head2 -n <level>
+
+No packets.
+
+Default :: 2
+
+=head2 -N <span>
+
+A span name or span to ignore.
+
+My be specified multiple times for more than one.
+
+Default :: undef
+
+=head2 -l <level>
+
+Low packets.
+
+Default :: 1
+
+=head2 -L <span>
+
+A span name or span to ignore for low packets.
+
+My be specified multiple times for more than one.
+
+Default :: undef
+
+=head2 -d <level>
+
+No streams, meaning no bi directional traffic TCP/UDP
+between IPs found.
+
+Default :: 2
+
+=head -D <span>
+
+A span name or span to ignore for no streams.
+
+My be specified multiple times for more than one.
+
+Default :: undef
+
+=head2 -t <level>
+
+No TCP or UDP for the stream.
+
+Default :: 2
+
+=head -T <span>
+
+A span name or span to ignore for no TCP or UDP.
+
+My be specified multiple times for more than one.
+
+Default :: undef
+
+=head2 -f <level>
+
+Down interface.
+
+Default :: 2
+
+=head -F <span>
+
+A span name or span to ignore for down interface.
+
+My be specified multiple times for more than one.
+
+Default :: undef
+
+=head2 -m <level>
+
+Missing interface.
+
+Default :: 2
+
+=head -M <span>
+
+A span name or span to ignore for missing interface.
+
+My be specified multiple times for more than one.
+
+Default :: undef
 
 =cut
 
@@ -88,6 +187,18 @@ my $packets;
 my @opt_spans;
 my @ports;
 my @additional_ports;
+my $no_packets;
+my @no_packets_to_ignore;
+my $low_packets;
+my @low_packets_to_ignore;
+my $no_streams;
+my @no_streams_to_ignore;
+my $no_tcp_or_udp;
+my @no_tcp_or_udp_to_ignore;
+my $down_interface;
+my @down_interfaces_to_ignore;
+my $missing_interface;
+my @missing_interface_to_ignore;
 GetOptions(
 	'version' => \$version,
 	'v'       => \$version,
@@ -99,8 +210,19 @@ GetOptions(
 	'i=s'     => \@ignore_IPs,
 	'p=s'     => \$packets,
 	'P=s'     => \@ports,
-
-	's=s' => \@opt_spans,
+	'n=s'     => \$no_packets,
+	'N=s'     => \@no_packets_to_ignore,
+	'l=s'     => \$low_packets,
+	'L=s'     => \@low_packets_to_ignore,
+	'd=s'     => \$no_streams,
+	'D=s'     => \@no_streams_to_ignore,
+	't=s'     => \$no_tcp_or_udp,
+	'T=s'     => \@no_tcp_or_udp_to_ignore,
+	'f=s'     => \$down_interface,
+	'F=s'     => \@down_interfaces_to_ignore,
+	'm=s'     => \$missing_interface,
+	'M=s'     => \@missing_interface_to_ignore,
+	's=s'     => \@opt_spans,
 );
 
 if ($help) {
@@ -118,27 +240,44 @@ if ( !defined( $opt_spans[0] ) ) {
 
 # put together the span
 my @spans;
+my @span_names;
 foreach my $span (@opt_spans) {
 	my @span_split = split( /,/, $span );
 
 	my @span_set;
+	my $span_int = 0;
 	foreach my $interface (@span_split) {
 		$interface =~ s/^[\ \t]*//;
 		$interface =~ s/[\ \t]*$//;
-		push( @span_set, $interface );
-	}
+
+		if ( $interface =~ /^\%/ ) {
+			$interface =~ s/^\%//;
+			$span_names[$span_int] = $interface;
+		} else {
+			push( @span_set, $interface );
+		}
+
+		$span_int++;
+	} ## end foreach my $interface (@span_split)
 
 	push( @spans, \@span_set );
 } ## end foreach my $span (@opt_spans)
 
 my $span_checker = Check::NetworkSpans->new(
-	spans            => \@spans,
-	ignore_IPs       => \@ignore_IPs,
-	auto_ignore      => $auto_ignore,
-	packets          => $packets,
-	duration         => $duration,
-	ports            => \@ports,
-	additional_ports => \@additional_ports,
+	spans                 => \@spans,
+	ignore_IPs            => \@ignore_IPs,
+	auto_ignore           => $auto_ignore,
+	packets               => $packets,
+	duration              => $duration,
+	ports                 => \@ports,
+	additional_ports      => \@additional_ports,
+	span_names            => \@span_names,
+	no_packets            => $no_packets,
+	no_packets_to_ignore  => \@no_packets_to_ignore,
+	low_packets           => $low_packets,
+	low_packets_to_ignore => \@low_packets_to_ignore,
+	no_streams            => $no_streams,
+	no_streams_to_ignore  => \@no_streams_to_ignore,
 );
 
 use Data::Dumper;

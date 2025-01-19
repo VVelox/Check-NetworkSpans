@@ -59,14 +59,28 @@ Initiates the object.
     - additional_ports :: Additional ports to look for.
         - Default :: [ ]
 
+    - span_names :: Optional name for spans. Name corresponds to index of spans array.
+        - Default :: [ ]
+
     my $span_checker = Check::NetworkSpans->new(
-        spans            => \@spans,
-        ignore_IPs       => \@ignore_IPs,
-        auto_ignore      => $auto_ignore,
-        packets          => $packets,
-        duration         => $duration,
-        ports            => \@ports,
-        additional_ports => \@additional_ports,
+        spans                       => \@spans,
+        ignore_IPs                  => \@ignore_IPs,
+        auto_ignore                 => $auto_ignore,
+        packets                     => $packets,
+        duration                    => $duration,
+        ports                       => \@ports,
+        additional_ports            => \@additional_ports,
+		no_packets                  => 2,
+		no_packets_to_ignore        => {},
+		low_packets                 => 1,
+		low_packets_to_ignore       => {},
+		no_streams                  => 2,
+		no_streams_to_ignore        => {},
+		no_tcp_or_udp               => 2,
+		down_interface              => 2,
+		down_interfaces_to_ignore   => {},
+		missing_interface           => 3,
+		missing_interface_to_ignore => {},
     );
 
 =cut
@@ -81,20 +95,50 @@ sub new {
 		die( '"spans" is defined and is ref "' . ref( $opts{spans} ) . '" instead of ARRAY' );
 	}
 
+	if ( !defined() ) {
+	}
+
 	my $self = {
-		ignore_IPs  => [],
-		spans       => [],
-		interfaces  => [],
-		packets     => 10000,
-		duration    => 120,
-		warnings    => [],
-		ports       => [],
-		ports_check => {},
+		ignore_IPs                  => [],
+		spans                       => [],
+		interfaces                  => [],
+		packets                     => 10000,
+		duration                    => 120,
+		warnings                    => [],
+		ports                       => [],
+		ports_check                 => {},
+		span_names                  => [],
+		no_packets                  => 2,
+		no_packets_to_ignore        => {},
+		low_packets                 => 1,
+		low_packets_to_ignore       => {},
+		no_streams                  => 2,
+		no_streams_to_ignore        => {},
+		no_tcp_or_udp               => 2,
+		no_tcp_or_udp_to_ignore     => {},
+		down_interface              => 2,
+		down_interfaces_to_ignore   => {},
+		missing_interface           => 3,
+		missing_interface_to_ignore => {},
+		interfaces_missing          => [],
 	};
 	bless $self;
 
+	# get span_names and ensure it is a array
+	if ( defined( $opts{span_names} ) && ref( $opts{span_names} ) eq 'ARRAY' ) {
+		$self->{span_names} = $opts{span_names};
+	} elsif ( defined( $opts{span_names} ) && ref( $opts{span_names} ) ne 'ARRAY' ) {
+		die( '$opts{span_names} ref is not ARRAY, but "' . ref( $opts{span_names} ) . '"' );
+	}
+
+	# get packet info and do a bit of sanity checking
 	if ( defined( $opts{packets} ) && looks_like_number( $opts{packets} ) ) {
+		if ( $opts{packets} < 1 ) {
+			die( '$opts{packets} is ' . $opts{packets} . ' which is less than 1' );
+		}
 		$self->{packets} = $opts{packets};
+	} elsif ( defined( $opts{packets} ) && !looks_like_number( $opts{packets} ) ) {
+		die('$opts{packets} is defined and not a number');
 	}
 
 	# if ports is set, ensure it is a array and if so process it
@@ -145,18 +189,21 @@ sub new {
 		if ( ref($span) ne 'ARRAY' ) {
 			die( 'Values for spans should be a array of interface names... not ref "' . ref($span) . '"' );
 		}
+		my $new_span = [];
 		if ( defined( $span->[0] ) ) {
 			foreach my $interface ( @{$span} ) {
 				if ( ref($interface) ne '' ) {
 					die( 'interface values in span must be of ref type "" and not ref ' . ref($interface) );
 				} elsif ( !defined( $interfaces->{$interface} ) ) {
-					die( '"' . $interface . '" does not exist' );
+					push( @{ $self->{interfaces_missing} }, $interface );
+				} else {
+					push( @{ $self->{interfaces} }, $interface );
+					push( @{$new_span},             $interface );
 				}
-				push( @{ $self->{interfaces} }, $interface );
-			}
+			} ## end foreach my $interface ( @{$span} )
 		} ## end if ( defined( $span->[0] ) )
 
-		push( @{ $self->{spans} }, $span );
+		push( @{ $self->{spans} }, $new_span );
 	} ## end foreach my $span ( @{ $opts{spans} } )
 
 	# ensure all the ignore IPs are actual IPs
@@ -187,8 +234,8 @@ sub new {
 	} ## end if ( $opts{auto_ignore} )
 
 	# put together list of ports to help
-	foreach my $ports (@{ $self->{ports} }) {
-		$self->{ports_check}{$ports}=0;
+	foreach my $ports ( @{ $self->{ports} } ) {
+		$self->{ports_check}{$ports} = 0;
 	}
 
 	return $self;
@@ -198,8 +245,6 @@ sub new {
 
 Runs the check. This will call helper-check_networkspans, which will call tshark
 to perform the capture.
-
-
 
 =cut
 
@@ -249,9 +294,10 @@ sub check {
 		}
 	} ## end foreach my $interface ( @{ $self->{interfaces} ...})
 
-	my $connections = {};
+	my $connections          = {};
+	my $per_port_connections = {};
 	foreach my $interface ( @{ $self->{interfaces} } ) {
-		$connections->{$interface}={};
+		$connections->{$interface} = {};
 		if ( defined( $pcap_data->{$interface} ) && ref( $pcap_data->{$interface} ) eq 'ARRAY' ) {
 			# process each packet for
 			foreach my $packet ( @{ $pcap_data->{$interface} } ) {
@@ -260,41 +306,59 @@ sub check {
 						&& defined( $packet->{_source}{layers} )
 						&& defined( $packet->{_source}{layers}{eth} ) )
 					{
-						my $name = '';
-						my $dst_port='';
-						my $src_port='';
+						my $name     = '';
+						my $dst_port = '';
+						my $src_port = '';
 						if ( defined( $packet->{_source}{layers}{udp} ) ) {
 							$name = $name . 'udp';
 							if ( defined( $packet->{_source}{layers}{udp}{'udp.dstport'} ) ) {
-								$dst_port=$packet->{_source}{layers}{udp}{'udp.dstport'};
+								$dst_port = $packet->{_source}{layers}{udp}{'udp.dstport'};
 							}
 							if ( defined( $packet->{_source}{layers}{udp}{'udp.srcport'} ) ) {
-								$src_port=$packet->{_source}{layers}{udp}{'udp.srcport'};
+								$src_port = $packet->{_source}{layers}{udp}{'udp.srcport'};
 							}
 						}
 						if ( defined( $packet->{_source}{layers}{tcp} ) ) {
 							$name = $name . 'tcp';
 							if ( defined( $packet->{_source}{layers}{tcp}{'tcp.dstport'} ) ) {
-								$dst_port=$packet->{_source}{layers}{tcp}{'tcp.dstport'};
+								$dst_port = $packet->{_source}{layers}{tcp}{'tcp.dstport'};
 							}
 							if ( defined( $packet->{_source}{layers}{tcp}{'tcp.srcport'} ) ) {
-								$src_port=$packet->{_source}{layers}{tcp}{'tcp.srcport'};
+								$src_port = $packet->{_source}{layers}{tcp}{'tcp.srcport'};
 							}
 						}
-						if ( defined(
-									 $packet->{_source}{layers}{ip}) &&
-							 defined($packet->{_source}{layers}{ip}{'ip.src'})
-							) {
-							$name = $name . '-'.$packet->{_source}{layers}{ip}{'ip.src'}.'%'.$src_port;
+						if (   defined( $packet->{_source}{layers}{ip} )
+							&& defined( $packet->{_source}{layers}{ip}{'ip.src'} ) )
+						{
+							$name = $name . '-' . $packet->{_source}{layers}{ip}{'ip.src'} . '%' . $src_port;
 						}
-						if ( defined(
-									 $packet->{_source}{layers}{ip}) &&
-							 defined($packet->{_source}{layers}{ip}{'ip.dst'})
-							) {
-							$name = $name .'-'. $packet->{_source}{layers}{ip}{'ip.dst'}.'%'.$dst_port;
+						if (   defined( $packet->{_source}{layers}{ip} )
+							&& defined( $packet->{_source}{layers}{ip}{'ip.dst'} ) )
+						{
+							$name = $name . '-' . $packet->{_source}{layers}{ip}{'ip.dst'} . '%' . $dst_port;
 						}
 
-						$connections->{$interface}{$name}=$packet;
+						# save the packet to per port info
+						if ( defined( $self->{ports_check}{$dst_port} ) ) {
+							if ( !defined( $per_port_connections->{$dst_port} ) ) {
+								$per_port_connections->{$dst_port} = {};
+							}
+							if ( !defined( $per_port_connections->{$dst_port}{$interface} ) ) {
+								$per_port_connections->{$dst_port}{$interface} = {};
+							}
+							$per_port_connections->{$dst_port}{$interface}{$name} = 1;
+						}
+						if ( defined( $self->{ports_check}{$src_port} ) ) {
+							if ( !defined( $per_port_connections->{$src_port} ) ) {
+								$per_port_connections->{$src_port} = {};
+							}
+							if ( !defined( $per_port_connections->{$src_port}{$interface} ) ) {
+								$per_port_connections->{$src_port}{$interface} = {};
+							}
+							$per_port_connections->{$src_port}{$interface}{$name} = 1;
+						}
+
+						$connections->{$interface}{$name} = $packet;
 					} ## end if ( defined( $packet->{_source} ) && defined...)
 				};
 			} ## end foreach my $packet ( @{ $pcap_data->{$interface...}})
@@ -302,37 +366,94 @@ sub check {
 	} ## end foreach my $interface ( @{ $self->{interfaces} ...})
 
 	# holds a count of packets found on the span
-	my $span_check={};
+	my $span_check = {};
 	# check each span for traffic
-	foreach my $span (@{$self->{spans}}) {
-		my $span_name=join(',', @{$span});
-		$span_check->{$span_name}=0;
-		foreach my $interface (@{$span}) {
+	foreach my $span ( @{ $self->{spans} } ) {
+		my $span_name = join( ',', @{$span} );
+		$span_check->{$span_name} = 0;
+		foreach my $interface ( @{$span} ) {
 			# process each connection for the interface looking for matches
-			foreach my $packet (keys(%{$connections->{$interface}})) {
-				if ( (
-					  defined( $packet->{_source}{layers}{tcp} ) &&
-					  defined( $packet->{_source}{layers}{tcp}{'tcp.dstport'} ) &&
-					  defined( $packet->{_source}{layers}{tcp}{'tcp.srcport'} )
-					  ) || (
-							defined( $packet->{_source}{layers}{udp} ) &&
-							defined( $packet->{_source}{layers}{udp}{'tcp.dstport'} ) &&
-							defined( $packet->{_source}{layers}{udp}{'tcp.srcport'} )
-					  )
-					  ) {
-					my $name = '';
-					my $dst_port='';
-					my $src_port='';
-				}
-			}
-		}
-	}
+			foreach my $packet ( keys( %{ $connections->{$interface} } ) ) {
+				if (
+					(
+						   defined( $packet->{_source}{layers}{ip} )
+						&& defined( $packet->{_source}{layers}{ip}{'ip.dst'} )
+						&& defined( $packet->{_source}{layers}{ip}{'ip.src'} )
 
-	my $results={
-				 'stream_packets' => 0,
-				 'spans_with_no_streams' => 0,
-				 'spans_with_streams' => 0,
-				 };
+					)
+					&& (
+						(
+							   defined( $packet->{_source}{layers}{tcp} )
+							&& defined( $packet->{_source}{layers}{tcp}{'tcp.dstport'} )
+							&& defined( $packet->{_source}{layers}{tcp}{'tcp.srcport'} )
+						)
+						|| (   defined( $packet->{_source}{layers}{udp} )
+							&& defined( $packet->{_source}{layers}{udp}{'tcp.dstport'} )
+							&& defined( $packet->{_source}{layers}{udp}{'tcp.srcport'} ) )
+					)
+					)
+				{
+					my $name     = '';
+					my $dst_port = '';
+					my $src_port = '';
+					my $proto    = '';
+					my $dst_ip   = $packet->{_source}{layers}{ip}{'ip.dst'};
+					my $src_ip   = $packet->{_source}{layers}{ip}{'ip.src'};
+
+					if ( defined( $packet->{_source}{layers}{udp} ) ) {
+						$proto = 'udp';
+						if ( defined( $packet->{_source}{layers}{udp}{'udp.dstport'} ) ) {
+							$dst_port = $packet->{_source}{layers}{udp}{'udp.dstport'};
+						}
+						if ( defined( $packet->{_source}{layers}{udp}{'udp.srcport'} ) ) {
+							$src_port = $packet->{_source}{layers}{udp}{'udp.srcport'};
+						}
+
+					} ## end if ( defined( $packet->{_source}{layers}{udp...}))
+					if ( defined( $packet->{_source}{layers}{tcp} ) ) {
+						$proto = 'tcp';
+						if ( defined( $packet->{_source}{layers}{tcp}{'tcp.dstport'} ) ) {
+							$dst_port = $packet->{_source}{layers}{tcp}{'tcp.dstport'};
+						}
+						if ( defined( $packet->{_source}{layers}{tcp}{'tcp.srcport'} ) ) {
+							$src_port = $packet->{_source}{layers}{tcp}{'tcp.srcport'};
+						}
+					}
+				} ## end if ( ( defined( $packet->{_source}{layers}...)))
+			} ## end foreach my $packet ( keys( %{ $connections->{$interface...}}))
+		} ## end foreach my $interface ( @{$span} )
+	} ## end foreach my $span ( @{ $self->{spans} } )
+
+	my $results = {
+		'oks'                             => [],
+		'warnings'                        => [],
+		'criticals'                       => [],
+		'errors'                          => [],
+		'stream_packets'                  => 0,
+		'spans_with_no_streams'           => 0,
+		'spans_with_no_streams_for_ports' => 0,
+		'missing_interfaces'              => $self->{interfaces_missing},
+		'missing_interfaces_count'        => $#{ $self->{interfaces_missing} },
+	};
+	$results->{missing_interfaces_count}++;
+
+	# check for missing interfaces
+	if (   $results->{missing_interfaces_count} >= 1
+		&& $self->{missing_interface} > 0 )
+	{
+		my $level = 'oks';
+		if ( $self->{missing_interface} == 1 ) {
+			$level = 'warnings';
+		} elsif ( $self->{missing_interface} == 2 ) {
+			$level = 'criticals';
+		} elsif ( $self->{missing_interface} == 3 ) {
+			$level = 'errors';
+		}
+		my $message = 'missing interfaces found... ' . join( ',', @{ $self->{interfaces_missing} } );
+		push( @{ $results->{$level} }, $message );
+	} ## end if ( $results->{missing_interfaces_count} ...)
+
+	return $results;
 } ## end sub check
 
 =head1 AUTHOR
