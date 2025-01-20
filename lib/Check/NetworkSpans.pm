@@ -76,7 +76,6 @@ Initiates the object.
 		low_packets_to_ignore       => {},
 		no_streams                  => 2,
 		no_streams_to_ignore        => {},
-		no_tcp_or_udp               => 2,
 		missing_interface           => 3,
 		missing_interface_to_ignore => {},
     );
@@ -91,9 +90,6 @@ sub new {
 		die('"spans" is undef');
 	} elsif ( ref( $opts{spans} ) ne 'ARRAY' ) {
 		die( '"spans" is defined and is ref "' . ref( $opts{spans} ) . '" instead of ARRAY' );
-	}
-
-	if ( !defined() ) {
 	}
 
 	my $self = {
@@ -112,8 +108,6 @@ sub new {
 		low_packets_to_ignore       => {},
 		no_streams                  => 2,
 		no_streams_to_ignore        => {},
-		no_tcp_or_udp               => 2,
-		no_tcp_or_udp_to_ignore     => {},
 		down_interface              => 2,
 		down_interfaces_to_ignore   => {},
 		missing_interface           => 3,
@@ -124,6 +118,35 @@ sub new {
 		port_check_to_ignore        => {},
 	};
 	bless $self;
+
+	# suck in alert handling stuff
+	my @alerts = ( 'no_packets', 'low_packets', 'no_streams', 'down_interface', 'missing_interface', 'port_check' );
+	foreach my $alert_type (@alerts) {
+		if ( defined( $opts{$alert_type} ) ) {
+			if ( ref( $opts{$alert_type} ) ne '' ) {
+				die( '$opts{' . $alert_type . '} should be ref "" and not ' . ref( $opts{$alert_type} ) );
+			}
+			if (   $opts{$alert_type} eq '0'
+				|| $opts{$alert_type} eq '1'
+				|| $opts{$alert_type} eq '2'
+				|| $opts{$alert_type} eq '3' )
+			{
+				die( '$opts{' . $alert_type . '} should be either 0, 1, 2, or 3 and not ' . $opts{$alert_type} );
+			}
+
+		} ## end if ( defined( $opts{$alert_type} ) )
+		if ( defined( $opts{ $alert_type . '_to_ignore' } ) ) {
+			if ( ref( $opts{ $alert_type . '_to_ignore' } ) ne 'ARRAY' ) {
+				die(      '$opts{'
+						. $alert_type
+						. '_to_ignore} should be ref ARRAY and not '
+						. ref( $opts{ $alert_type . '_to_ignore' } ) );
+			}
+			foreach my $to_ignore ( @{ $opts{ $alert_type . '_to_ignore' } } ) {
+				$self->{ $alert_type . '_to_ignore' }{$to_ignore} = 1;
+			}
+		} ## end if ( defined( $opts{ $alert_type . '_to_ignore'...}))
+	} ## end foreach my $alert_type (@alerts)
 
 	# get span_names and ensure it is a array
 	if ( defined( $opts{span_names} ) && ref( $opts{span_names} ) eq 'ARRAY' ) {
@@ -388,6 +411,7 @@ sub check {
 		'criticals' => [],
 		'errors'    => [],
 		'ignored'   => [],
+		status      => 0,
 	};
 
 	# check each span for bi directional traffic traffic
@@ -614,6 +638,16 @@ sub check {
 			push( @{ $results->{$level} }, $message );
 		}
 	} ## end if ( $results->{missing_interfaces_count} ...)
+
+	# sets the final status
+	# initially set to 0, OK
+	if ( defined( $results->{errors}[0] ) ) {
+		$results->{status} = 3;
+	} elsif ( defined( $results->{alerts}[0] ) ) {
+		$results->{status} = 2;
+	} elsif ( defined( $results->{warnings}[0] ) ) {
+		$results->{status} = 1;
+	}
 
 	return $results;
 } ## end sub check

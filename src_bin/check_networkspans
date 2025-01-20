@@ -126,20 +126,6 @@ My be specified multiple times for more than one.
 
 Default :: undef
 
-=head2 -t <level>
-
-No TCP or UDP.
-
-Default :: 2
-
-=head -T <span>
-
-A span name or span to ignore for no TCP or UDP.
-
-My be specified multiple times for more than one.
-
-Default :: undef
-
 =head2 -m <level>
 
 Missing interface.
@@ -193,8 +179,6 @@ my $low_packets;
 my @low_packets_to_ignore;
 my $no_streams;
 my @no_streams_to_ignore;
-my $no_tcp_or_udp;
-my @no_tcp_or_udp_to_ignore;
 my $missing_interface;
 my @missing_interface_to_ignore;
 my $port_check;
@@ -216,8 +200,6 @@ GetOptions(
 	'L=s'     => \@low_packets_to_ignore,
 	'd=s'     => \$no_streams,
 	'D=s'     => \@no_streams_to_ignore,
-	't=s'     => \$no_tcp_or_udp,
-	'T=s'     => \@no_tcp_or_udp_to_ignore,
 	'm=s'     => \$missing_interface,
 	'M=s'     => \@missing_interface_to_ignore,
 	'c=s'     => \$port_check,
@@ -278,8 +260,6 @@ my $span_checker = Check::NetworkSpans->new(
 	low_packets_to_ignore       => \@low_packets_to_ignore,
 	no_streams                  => $no_streams,
 	no_streams_to_ignore        => \@no_streams_to_ignore,
-	no_tcp_or_udp               => $no_tcp_or_udp,
-	no_tcp_or_udp_to_ignore     => \@no_tcp_or_udp_to_ignore,
 	missing_interface           => $missing_interface,
 	missing_interface_to_ignore => \@missing_interface_to_ignore,
 	port_check                  => $port_check,
