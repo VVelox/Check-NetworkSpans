@@ -89,9 +89,9 @@ No packets.
 
 Default :: 2
 
-=head2 -N <span>
+=head2 -N <interface>
 
-A span name or span to ignore.
+A interface to ignore for no packets.
 
 My be specified multiple times for more than one.
 
@@ -103,9 +103,9 @@ Low packets.
 
 Default :: 1
 
-=head2 -L <span>
+=head2 -L <interface>
 
-A span name or span to ignore for low packets.
+A interface to ignore for low packets.
 
 My be specified multiple times for more than one.
 
@@ -128,7 +128,7 @@ Default :: undef
 
 =head2 -t <level>
 
-No TCP or UDP for the stream.
+No TCP or UDP.
 
 Default :: 2
 
@@ -140,29 +140,29 @@ My be specified multiple times for more than one.
 
 Default :: undef
 
-=head2 -f <level>
-
-Down interface.
-
-Default :: 2
-
-=head -F <span>
-
-A span name or span to ignore for down interface.
-
-My be specified multiple times for more than one.
-
-Default :: undef
-
 =head2 -m <level>
 
 Missing interface.
 
 Default :: 2
 
-=head -M <span>
+=head -M <interface>
 
-A span name or span to ignore for missing interface.
+A interface to ignore for missing interface.
+
+My be specified multiple times for more than one.
+
+Default :: undef
+
+=head -c <level>
+
+Port check.
+
+Default :: 1
+
+=head2 -C <span>
+
+A span or span name to ignore for port checks..
 
 My be specified multiple times for more than one.
 
@@ -195,10 +195,10 @@ my $no_streams;
 my @no_streams_to_ignore;
 my $no_tcp_or_udp;
 my @no_tcp_or_udp_to_ignore;
-my $down_interface;
-my @down_interfaces_to_ignore;
 my $missing_interface;
 my @missing_interface_to_ignore;
+my $port_check;
+my @port_check_to_ignore;
 GetOptions(
 	'version' => \$version,
 	'v'       => \$version,
@@ -218,10 +218,10 @@ GetOptions(
 	'D=s'     => \@no_streams_to_ignore,
 	't=s'     => \$no_tcp_or_udp,
 	'T=s'     => \@no_tcp_or_udp_to_ignore,
-	'f=s'     => \$down_interface,
-	'F=s'     => \@down_interfaces_to_ignore,
 	'm=s'     => \$missing_interface,
 	'M=s'     => \@missing_interface_to_ignore,
+	'c=s'     => \$port_check,
+	'C=s'     => \@port_check_to_ignore,
 	's=s'     => \@opt_spans,
 );
 
@@ -264,20 +264,26 @@ foreach my $span (@opt_spans) {
 } ## end foreach my $span (@opt_spans)
 
 my $span_checker = Check::NetworkSpans->new(
-	spans                 => \@spans,
-	ignore_IPs            => \@ignore_IPs,
-	auto_ignore           => $auto_ignore,
-	packets               => $packets,
-	duration              => $duration,
-	ports                 => \@ports,
-	additional_ports      => \@additional_ports,
-	span_names            => \@span_names,
-	no_packets            => $no_packets,
-	no_packets_to_ignore  => \@no_packets_to_ignore,
-	low_packets           => $low_packets,
-	low_packets_to_ignore => \@low_packets_to_ignore,
-	no_streams            => $no_streams,
-	no_streams_to_ignore  => \@no_streams_to_ignore,
+	spans                       => \@spans,
+	ignore_IPs                  => \@ignore_IPs,
+	auto_ignore                 => $auto_ignore,
+	packets                     => $packets,
+	duration                    => $duration,
+	ports                       => \@ports,
+	additional_ports            => \@additional_ports,
+	span_names                  => \@span_names,
+	no_packets                  => $no_packets,
+	no_packets_to_ignore        => \@no_packets_to_ignore,
+	low_packets                 => $low_packets,
+	low_packets_to_ignore       => \@low_packets_to_ignore,
+	no_streams                  => $no_streams,
+	no_streams_to_ignore        => \@no_streams_to_ignore,
+	no_tcp_or_udp               => $no_tcp_or_udp,
+	no_tcp_or_udp_to_ignore     => \@no_tcp_or_udp_to_ignore,
+	missing_interface           => $missing_interface,
+	missing_interface_to_ignore => \@missing_interface_to_ignore,
+	port_check                  => $port_check,
+	port_check_to_ignore        => \@port_check_to_ignore,
 );
 
 use Data::Dumper;
@@ -305,13 +311,18 @@ if ( defined( $results->{oks}[0] ) ) {
 }
 if ( defined( $results->{warnings}[0] ) ) {
 	$warnings = 'WARNING - ' . join( "\nWARNING - ", @{ $results->{warnings} } ) . "\n";
+	$exit_val = 1;
 }
 if ( defined( $results->{alerts}[0] ) ) {
-	$alerts = 'ALERT - ' . join( "\nALERT - ", @{ $results->{alerts} } ) . "\n";
+	$alerts   = 'ALERT - ' . join( "\nALERT - ", @{ $results->{alerts} } ) . "\n";
+	$exit_val = 2;
 }
 if ( defined( $results->{errors}[0] ) ) {
-	$errors = 'ERROR - ' . join( "\nERROR - ", @{ $results->{errors} } ) . "\n";
+	$errors   = 'ERROR - ' . join( "\nERROR - ", @{ $results->{errors} } ) . "\n";
+	$exit_val = 3;
 }
 
-print $oks. $warnings . $alerts . $errors;
+if ( $oks eq '' && $warnings eq '' && $alerts eq '' && $errors eq '' ) {
+	print $oks. $warnings . $alerts . $errors;
+}
 exit $exit_val;
