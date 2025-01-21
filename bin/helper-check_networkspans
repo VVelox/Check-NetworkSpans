@@ -25,7 +25,7 @@ done
 check_time=0
 contintue_check=1
 while [ "$contintue_check" -ge 1 ]; do
-	check_time=`export "$check_time" + 5`
+	check_time=`expr "$check_time" + 5`
 	sleep 5;
 	if [ `jobs -p | wc -l` -lt 1 ]; then
 		contintue_check=0
