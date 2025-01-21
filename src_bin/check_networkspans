@@ -81,7 +81,9 @@ Levels are as below.
     - 0 :: OK
     - 1 :: WARNING
     - 2 :: ALERT
-    - 3 :: UNKNOWN
+    - 3 :: ERROR
+
+If you want to ignore a alert type entirely, set the level to 0.
 
 =head2 -n <level>
 
@@ -282,27 +284,30 @@ if ( !defined($results) ) {
 
 my $exit_val = 0;
 my $oks      = '';
-my $warnings = '';
-my $alerts   = '';
-my $errors   = '';
-
+my $status   = '';
 if ( defined( $results->{oks}[0] ) ) {
-	$oks = 'OK - ' . join( "\nOK - ", @{ $results->{oks} } ) . "\n";
+	$status = 'OK - ' . join( "\nOK - ", @{ $results->{oks} } ) . "\n";
 }
 if ( defined( $results->{warnings}[0] ) ) {
-	$warnings = 'WARNING - ' . join( "\nWARNING - ", @{ $results->{warnings} } ) . "\n";
+	$status   = $status . 'WARNING - ' . join( "\nWARNING - ", @{ $results->{warnings} } ) . "\n";
 	$exit_val = 1;
 }
 if ( defined( $results->{alerts}[0] ) ) {
-	$alerts   = 'ALERT - ' . join( "\nALERT - ", @{ $results->{alerts} } ) . "\n";
+	$status   = $status . 'ALERT - ' . join( "\nALERT - ", @{ $results->{alerts} } ) . "\n";
 	$exit_val = 2;
 }
 if ( defined( $results->{errors}[0] ) ) {
-	$errors   = 'ERROR - ' . join( "\nERROR - ", @{ $results->{errors} } ) . "\n";
+	$status   = $status . 'ERROR - ' . join( "\nERROR - ", @{ $results->{errors} } ) . "\n";
 	$exit_val = 3;
 }
-
-if ( $oks eq '' && $warnings eq '' && $alerts eq '' && $errors eq '' ) {
-	print $oks. $warnings . $alerts . $errors;
+if ( defined( $results->{ignored}[0] ) ) {
+	$status = $status . 'IGNORED - ' . join( "\nIGNORED - ", @{ $results->{errors} } ) . "\n";
 }
+
+if ( $status eq '' ) {
+	print $status = "OK\n";
+}
+
+print $status;
+
 exit $exit_val;
