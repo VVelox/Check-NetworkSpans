@@ -116,6 +116,7 @@ sub new {
 		interfaces_down             => {},
 		port_check                  => 1,
 		port_check_to_ignore        => {},
+		debug                       => $opts{debug},
 	};
 	bless $self;
 
@@ -603,7 +604,7 @@ sub check {
 	} ## end foreach my $span ( @{ $self->{spans} } )
 
 	# check for missing interfaces
-	if (   $results->{missing_interfaces_count} >= 1
+	if (   $#{ $self->{interfaces_missing} } >= 0
 		&& $self->{missing_interface} > 0 )
 	{
 		my $level = 'oks';
@@ -637,7 +638,7 @@ sub check {
 			my $message = 'missing interfaces... ' . join( ',', @missing_interfaces );
 			push( @{ $results->{$level} }, $message );
 		}
-	} ## end if ( $results->{missing_interfaces_count} ...)
+	} ## end if ( $#{ $self->{interfaces_missing} } >= ...)
 
 	# sets the final status
 	# initially set to 0, OK

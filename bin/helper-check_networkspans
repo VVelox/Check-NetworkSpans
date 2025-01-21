@@ -3,9 +3,15 @@
 if [ -z "$CHECK_NETWORKSPANS_DURATION" ]; then
 	export CHECK_NETWORKSPANS_DURATION=120
 fi
+if [ ! -z "$CHECK_NETWORKSPANS_DEBUG" ]; then
+	echo "DEBUG: CHECK_NETWORKSPANS_DURATION=$CHECK_NETWORKSPANS_DURATION"
+fi
 
 if [ -z "$CHECK_NETWORKSPANS_PACKETS" ]; then
 	export CHECK_NETWORKSPANS_PACKETS=10000
+fi
+if [ ! -z "$CHECK_NETWORKSPANS_DEBUG" ]; then
+	echo "DEBUG: CHECK_NETWORKSPANS_PACKETS=$CHECK_NETWORKSPANS_PACKETS"
 fi
 
 if [ -z "$CHECK_NETWORKSPANS_DIR" ]; then
@@ -17,21 +23,39 @@ else
 	fi
 fi
 cd "$CHECK_NETWORKSPANS_DIR"
+if [ ! -z "$CHECK_NETWORKSPANS_DEBUG" ]; then
+	echo "DEBUG: CHECK_NETWORKSPANS_DIR=$CHECK_NETWORKSPANS_DIR"
+fi
 
 for interface in `echo "$CHECK_NETWORKSPANS_INTERFACES"`; do
 	tshark -i "$interface" -a "duration:$CHECK_NETWORKSPANS_DURATION" -a "packets:$CHECK_NETWORKSPANS_PACKETS" -w "$interface".pcap -f "$CHECK_NETWORKSPANS_FILTER" -Q 2>&1 &
+	if [ ! -z "$CHECK_NETWORKSPANS_DEBUG" ]; then
+		echo "DEBUG: started tshark for $interface"
+	fi
 done
 
 check_time=0
 contintue_check=1
+job_count=`jobs -p | wc -l | sed 's/ //g'`
 while [ "$contintue_check" -ge 1 ]; do
+	if [ ! -z "$CHECK_NETWORKSPANS_DEBUG" ]; then
+		echo "DEBUG: check_time=$check_time, job_count=$job_count"
+	fi
 	check_time=`expr "$check_time" + 5`
 	sleep 5;
-	if [ `jobs -p | wc -l` -lt 1 ]; then
+	job_count=`jobs -p | wc -l`	
+	if [ "$job_count" -lt 1 ]; then
 		contintue_check=0
 	fi
 done
 
 if [ "$contintue_check" -ge 1 ]; then
+	if [ ! -z "$CHECK_NETWORKSPANS_DEBUG" ]; then
+		echo "DEBUG: attempting to kill jobs..."
+	fi	
 	jobs -p | xargs kill
+fi
+
+if [ ! -z "$CHECK_NETWORKSPANS_DEBUG" ]; then
+	echo "DEBUG: listing dir... /bin/ls -lha"
 fi

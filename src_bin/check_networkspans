@@ -15,7 +15,7 @@ check_networkspans - Check interfaces to see if we are getting span traffic.
 =head1 SYNOPSIS
 
 check_networkspans B<-s> <span ports> [B<-s> <span ports>] [B<-i> <ignore IP>] [B<-a> <0/1>]
-[B<-d> <seconds>] [B<-p> <packets>] [B<-P> <port>] [B<-A> <port>]
+[B<-S> <seconds>] [B<-p> <packets>] [B<-P> <port>] [B<-A> <port>] [--debug]
 
 check_networkspans -h/--help
 
@@ -39,7 +39,7 @@ Default :: 1
 Additional ports to look for. Will be appended to -P if used or other wise will be appended
 to the defaults.
 
-=head2 -d <seconds>
+=head2 -S <seconds>
 
 Max time the test should run for in seconds.
 
@@ -73,6 +73,10 @@ If one of the items in the list starts with %, that will be used as the
 name of the span. It will not be used as a interface.
 
 Starting and leading spaces and tabs for each interface is removed.
+
+=head2 --debug
+
+Enable debugging.
 
 =head1 FLAGS, ALERT CONTROL
 
@@ -185,6 +189,7 @@ my $missing_interface;
 my @missing_interface_to_ignore;
 my $port_check;
 my @port_check_to_ignore;
+my $debug = 0;
 GetOptions(
 	'version' => \$version,
 	'v'       => \$version,
@@ -192,7 +197,7 @@ GetOptions(
 	'h'       => \$help,
 	'a=s'     => \$auto_ignore,
 	'A=s'     => \@additional_ports,
-	'd=s'     => \$duration,
+	'S=s'     => \$duration,
 	'i=s'     => \@ignore_IPs,
 	'p=s'     => \$packets,
 	'P=s'     => \@ports,
@@ -207,6 +212,7 @@ GetOptions(
 	'c=s'     => \$port_check,
 	'C=s'     => \@port_check_to_ignore,
 	's=s'     => \@opt_spans,
+	'debug'   => \$debug,
 );
 
 if ($help) {
@@ -216,6 +222,10 @@ if ($help) {
 if ($version) {
 	&version;
 	exit 255;
+}
+
+if ($debug) {
+	$ENV{CHECK_NETWORKSPANS_DEBUG} = 1;
 }
 
 if ( !defined( $opt_spans[0] ) ) {
@@ -229,7 +239,8 @@ foreach my $span (@opt_spans) {
 	my @span_split = split( /,/, $span );
 
 	my @span_set;
-	my $span_int = 0;
+	my $span_int  = 0;
+	my $span_name = 'undef';
 	foreach my $interface (@span_split) {
 		$interface =~ s/^[\ \t]*//;
 		$interface =~ s/[\ \t]*$//;
@@ -237,6 +248,7 @@ foreach my $span (@opt_spans) {
 		if ( $interface =~ /^\%/ ) {
 			$interface =~ s/^\%//;
 			$span_names[$span_int] = $interface;
+			$span_name = $interface;
 		} else {
 			push( @span_set, $interface );
 		}
@@ -244,10 +256,18 @@ foreach my $span (@opt_spans) {
 		$span_int++;
 	} ## end foreach my $interface (@span_split)
 
+	if ($debug) {
+		print 'DEBUG: span=' . join( ',', @span_set ) . ' span_name=' . $span_name . "\n";
+	}
+
 	push( @spans, \@span_set );
 } ## end foreach my $span (@opt_spans)
 
+if ($debug) {
+	print "DEBUG: calling Check::NetworkSpans->new ...";
+}
 my $span_checker = Check::NetworkSpans->new(
+	debug                       => $debug,
 	spans                       => \@spans,
 	ignore_IPs                  => \@ignore_IPs,
 	auto_ignore                 => $auto_ignore,
@@ -267,9 +287,22 @@ my $span_checker = Check::NetworkSpans->new(
 	port_check                  => $port_check,
 	port_check_to_ignore        => \@port_check_to_ignore,
 );
+if ($debug) {
+	print "DEBUG: Check::NetworkSpans initiated... Dumping...\n";
+	eval 'use Data::Dumper; print Dumper($span_checker);';
+	print "DEBUG: Dumping finished.\n";
+}
 
 my $results;
+if ($debug) {
+	print "DEBUG: calling Check::NetworkSpans->check ...\n";
+}
 eval { $results = $span_checker->check; };
+if ($debug) {
+	print "DEBUG: Check::NetworkSpans->check finished... Dumping results...";
+	eval 'use Data::Dumper; print Dumper($results);';
+	print "DEBUG: Dumping finished.";
+}
 if ($@) {
 	warn( '$span_checker->check died ... ' . $@ );
 	exit 3;
