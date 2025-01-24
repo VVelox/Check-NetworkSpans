@@ -14,7 +14,7 @@ use Data::Dumper;
 
 =head1 NAME
 
-Check::NetworkSpans - See if bidirectional traffic is being seen on the spans.
+Check::NetworkSpans - See if bidirectional traffic is being seen on spans.
 
 =head1 VERSION
 
@@ -391,10 +391,13 @@ sub check {
 				. join( '\' ', @tshark_args ) . "'\n";
 			print "DEBUG: calling env...\n";
 			system('env');
+			system(@tshark_args);
 		} else {
 			push( @tshark_args, '-Q' );
+			my @tshark_args_quoted;
+			my $command=shell_quote(@tshark_args);
+			my $tshark_output = `$command 2>&1`;
 		}
-		system(@tshark_args);
 		if ( $self->{debug} ) {
 			print "DEBUG: returned... results... ";
 			system('pwd');
@@ -796,6 +799,8 @@ sub check {
 			my $message = 'missing interfaces... ' . join( ',', @missing_interfaces );
 			push( @{ $results->{$level} }, $message );
 		}
+	}else {
+		push( @{ $results->{oks} }, 'no missing interfaces' );
 	} ## end if ( $#{ $self->{interfaces_missing} } >= ...)
 
 	# sets the final status
