@@ -236,12 +236,12 @@ if ( !defined( $opt_spans[0] ) ) {
 # put together the span
 my @spans;
 my @span_names;
+my $span_int  = 0;
 foreach my $span (@opt_spans) {
 	my @span_split = split( /,/, $span );
 
 	my @span_set;
-	my $span_int  = 0;
-	my $span_name = 'undef';
+	my $span_name = undef;
 	foreach my $interface (@span_split) {
 		$interface =~ s/^[\ \t]*//;
 		$interface =~ s/[\ \t]*$//;
@@ -254,7 +254,6 @@ foreach my $span (@opt_spans) {
 			push( @span_set, $interface );
 		}
 
-		$span_int++;
 	} ## end foreach my $interface (@span_split)
 
 	if ($debug) {
@@ -262,6 +261,7 @@ foreach my $span (@opt_spans) {
 	}
 
 	push( @spans, \@span_set );
+	$span_int++;
 } ## end foreach my $span (@opt_spans)
 
 if ($debug) {
