@@ -28,7 +28,13 @@ our $VERSION = '0.0.1';
 
     use Check::NetworkSpans;
 
-    my $span_checker = Check::NetworkSpans->new();
+    my $span_checker = Check::NetworkSpans->new(
+            spans=>[
+                   ['em0', 'em1'],
+                   ['em2', 'em3'],
+                   ],
+            low_packets_to_ignore=>['em2,em3'],
+        );
 
 =head1 METHODS
 
@@ -80,6 +86,56 @@ Initiates the object.
 		missing_interface           => 3,
 		missing_interface_to_ignore => {},
     );
+
+Below are the options controlling alerting and what to ignore.
+
+    - no_packets :: If the span has no packets.
+        Value :: alert level
+        Default :: 2
+
+    - no_packets_to_ignore ::
+        Value :: array of spans or span names
+        Default :: []
+
+    - low_packets :: If the span has fewer packets than the amount specified by packets.
+        Value :: alert level
+        Default :: 1
+
+    - low_packets_to_ignore :: What to ignore for low_packets.
+        Value :: array of spans or span names
+        Default :: []
+
+    - no_streams :: No bidirectional TCP/UDP streams were found between IP addresses.
+        Value :: alert level
+        Default :: 2
+
+    - no_streams_to_ignore :: What to ignore for no_streams.
+        Value :: array of spans or span names
+        Default :: []
+
+
+    - missing_interface :: A interface is missing.
+        Value :: alert level
+        Default :: 3
+
+    - missing_interface_to_ignore :: What to ignore for missing_interface.
+        Value :: array interfaces
+        Default :: []
+
+    - port_check :: No traffic was found on the expected ports.
+        Value :: alert level
+        Default :: 1
+
+    - port_check_to_ignore :: What to ignore for port_check.
+        Value :: array of spans or span names
+        Default :: []
+
+Levels are as below.
+
+    - 0 :: OK
+    - 1 :: WARNING
+    - 2 :: ALERT
+    - 3 :: ERROR
 
 =cut
 
@@ -269,8 +325,24 @@ sub new {
 
 =head2 check
 
-Runs the check. This will call helper-check_networkspans, which will call tshark
-to perform the capture.
+Runs the check. This will call tshark and then disect that captured PCAPs.
+
+    my $results = $span_checker->check;
+
+    use Data::Dumper;
+    print Dumper($results);
+
+The returned value is a hash. The keys are as below.
+
+    - oks :: An array of items that were considered OK.
+
+    - warnings :: An array of items that were considered warnings.
+
+    - criticals :: An array of items that were considered criticals.
+
+    - ignored :: An array of items that were ignored.
+
+    - status :: Alert status integer.
 
 =cut
 
@@ -379,16 +451,20 @@ sub check {
 	if ( $self->{debug} ) {
 		print "DEBUG: starting processing connection data\n";
 	}
-	my $connections          = {};
-	my $per_port_connections = {};
-	my $packet_count         = {};
-	my $span_packet_count    = {};
+	my $connections               = {};
+	my $port_connections_per_span = {};
+	my $port_connections_per_port = {};
+	foreach my $port ( @{ $self->{ports} } ) {
+		$port_connections_per_port->{$port} = 0;
+	}
+	my $packet_count      = {};
+	my $span_packet_count = {};
 	foreach my $span_name (@span_names) {
 		if ( $self->{debug} ) {
-			print 'DEBUG: processing connection data for '.$span_name."\n"
+			print 'DEBUG: processing connection data for ' . $span_name . "\n";
 		}
-		$connections->{$span_name}          = {};
-		$per_port_connections->{$span_name} = 0;
+		$connections->{$span_name}               = {};
+		$port_connections_per_span->{$span_name} = 0;
 		if ( defined( $span_packets->{$span_name} ) && ref( $span_packets->{$span_name} ) eq 'ARRAY' ) {
 			$span_packet_count->{$span_name} = $#{ $span_packets->{$span_name} } + 1;
 
@@ -452,10 +528,12 @@ sub check {
 
 						# save the packet to per port info
 						if ( $add_it && defined( $self->{ports_check}{$dst_port} ) ) {
-							$per_port_connections->{$span_name}++;
+							$port_connections_per_span->{$span_name}++;
+							$port_connections_per_port->{$dst_port}++;
 						}
 						if ( $add_it && defined( $self->{ports_check}{$src_port} ) ) {
-							$per_port_connections->{$span_name}++;
+							$port_connections_per_span->{$span_name}++;
+							$port_connections_per_port->{$src_port}++;
 						}
 
 						if ($add_it) {
@@ -470,6 +548,10 @@ sub check {
 		}
 	} ## end foreach my $span_name (@span_names)
 
+	$results->{port_connections_per_span} = $port_connections_per_span;
+	$results->{port_connections_per_port} = $port_connections_per_port;
+	$results->{packet_count}              = $packet_count;
+
 	if ( $self->{debug} ) {
 		print "DEBUG: checking for bidirectional traffic\n";
 	}
@@ -477,7 +559,7 @@ sub check {
 	$span_int = 0;
 	foreach my $span_name (@span_names) {
 		if ( $self->{debug} ) {
-			print 'DEBUG: processing traffic data for '.$span_name."\n"
+			print 'DEBUG: processing traffic data for ' . $span_name . "\n";
 		}
 		my $count = 0;
 		# process each connection for the interface looking for matches
@@ -538,7 +620,7 @@ sub check {
 					$count++;
 				}
 			} ## end if ( ( defined( $packet->{_source}{layers}...)))
-		} ## end foreach my $packet_name ( keys( %{ $span_packets...}))
+		} ## end foreach my $packet_name ( keys( %{ $connections...}))
 
 		# if count is less than one, then no streams were found
 		if ( $count < 1 ) {
@@ -560,7 +642,12 @@ sub check {
 			} else {
 				push( @{ $results->{$level} }, $message );
 			}
-		} ## end if ( $count < 1 )
+		} else {
+			push(
+				@{ $results->{oks} },
+				'bidirectional TCP/UDP streams, ' . $count . ', found for ' . $self->get_span_name($span_int)
+			);
+		}
 
 		$span_int++;
 	} ## end foreach my $span_name (@span_names)
@@ -572,10 +659,10 @@ sub check {
 	$span_int = 0;
 	foreach my $span_name (@span_names) {
 		if ( $self->{debug} ) {
-			print 'DEBUG: processing port data for '.$span_name."\n";
+			print 'DEBUG: processing port data for ' . $span_name . "\n";
 		}
 		my $ports_found = 0;
-		if ( $per_port_connections->{$span_name} > 0 ) {
+		if ( $port_connections_per_span->{$span_name} > 0 ) {
 			$ports_found = 1;
 		}
 		if ( !$ports_found ) {
@@ -600,7 +687,17 @@ sub check {
 			} else {
 				push( @{ $results->{$level} }, $message );
 			}
-		} ## end if ( !$ports_found )
+		} else {
+			push(
+				@{ $results->{oks} },
+				'ports '
+					. join( ',', @{ $self->{ports} } )
+					. ' have '
+					. $port_connections_per_span->{$span_name}
+					. ' packets for span '
+					. $self->get_span_name($span_int)
+			);
+		} ## end else [ if ( !$ports_found ) ]
 		$span_int++;
 	} ## end foreach my $span_name (@span_names)
 
@@ -655,7 +752,12 @@ sub check {
 			} else {
 				push( @{ $results->{$level} }, $message );
 			}
-		} ## end if ( $span_packet_count->{$span_name} < $self...)
+		} else {
+			push(
+				@{ $results->{oks} },
+				'span ' . $self->get_span_name($span_int) . ' has ' . $span_packet_count->{$span_name} . ' packets'
+			);
+		}
 		$span_int++;
 	} ## end foreach my $span_name (@span_names)
 

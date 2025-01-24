@@ -53,9 +53,10 @@ May be used more than once.
 
 =head2 -p <packets>
 
-Number of packets to capture for the test.
+Number of packets to capture for the test. This is the number of total packets to capture
+across all interfaces of a span.
 
-Default :: 2000
+Default :: 5000
 
 =head2 -P <port>
 
@@ -109,9 +110,9 @@ Low packets.
 
 Default :: 1
 
-=head2 -L <interface>
+=head2 -L <span>
 
-A interface to ignore for low packets.
+A span or span name to ignore for low packets.
 
 My be specified multiple times for more than one.
 
