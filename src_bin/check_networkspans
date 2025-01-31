@@ -332,7 +332,7 @@ if ( defined( $results->{errors}[0] ) ) {
 	$exit_val = 3;
 }
 if ( defined( $results->{ignored}[0] ) ) {
-	$status = $status . 'IGNORED - ' . join( "\nIGNORED - ", @{ $results->{errors} } ) . "\n";
+	$status = $status . 'IGNORED - ' . join( "\nIGNORED - ", @{ $results->{ignored} } ) . "\n";
 }
 
 if ( $status eq '' ) {
