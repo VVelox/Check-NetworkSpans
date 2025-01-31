@@ -191,6 +191,7 @@ sub new {
 			{
 				die( '$opts{' . $alert_type . '} should be either 0, 1, 2, or 3 and not ' . $opts{$alert_type} );
 			}
+			$self->{$alert_type} = $opts{$alert_type};
 
 		} ## end if ( defined( $opts{$alert_type} ) )
 		if ( defined( $opts{ $alert_type . '_to_ignore' } ) ) {
